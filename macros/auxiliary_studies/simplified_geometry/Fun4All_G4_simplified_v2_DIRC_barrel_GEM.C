@@ -1,9 +1,8 @@
 /*
 ================================================================================================================
 The purpose of this code is to have a version of the all-silicon tracker that is simplified so that we can study
-different variations of the geometry quickly. Specifically, I wrote this code to study the impact that changing
-the material budget of different regions of the detector would have on different resolutions.
-This all-silicon tracker has three vertexing layers
+different variations of the geometry quickly. Specifically, I wrote this code to study the impact that adding a
+cylindrical GEM outside the DIRC can have on tracking.
 ================================================================================================================
 */
 #pragma once
@@ -29,15 +28,15 @@ This all-silicon tracker has three vertexing layers
 #include <g4lblvtx/PHG4ParticleGenerator_flat_pT.h>
 #include <g4lblvtx/AllSi_Al_support_Subsystem.h>
 #include "G4_BlackHole.C"
+//#include "../../G4_DIRC.C"
+#include "G4_DIRC_SMALL.C"
 
 R__LOAD_LIBRARY(libfun4all.so)
 R__LOAD_LIBRARY(libg4detectors.so)
 R__LOAD_LIBRARY(libg4lblvtx.so)
 R__LOAD_LIBRARY(libg4trackfastsim.so)
 
-int pid_code( std::string part_name );
-
-void Fun4All_G4_simplified_3vtx(
+void Fun4All_G4_simplified_v2_DIRC_barrel_GEM(
 			int nEvents = -1,			// number of events
 			double vtx_matBud  = 0.05,		// % X/X0 (material budget of vertexing layers)
 			double barr_matBud = 0.55,		// % X/X0 (material budget of middle layers)
@@ -47,15 +46,15 @@ void Fun4All_G4_simplified_3vtx(
 			int magnetic_field = 4, 		// Magnetic field setting
 			TString out_name = "out_vtx_study")	// output filename
 {	
-	std::string part = "pi-";
-	//std::string part = "kaon-";
 	// ======================================================================================================
 	// Input from the user
-	const int particle_gen = 5;     // 1 = particle generator, 2 = particle gun, 3 = simple event generator, 4 = pythia8 e+p collision, 5 = particle generator flat in pT
+	const int particle_gen = 1;// 1 = particle generator, 2 = particle gun, 3 = simple event generator, 4 = pythia8 e+p collision, 5 = particle generator flat in pT
 	double pix_size_vtx = 10.; // um - size of pixels in vertexing layers
 	double pix_size_bar = 10.; // um - size of pixels in barrel layers
 	double pix_size_dis = 10.; // um - size of pixels in disk layers
-	bool use_blackhole = true;
+	bool use_blackhole = false;
+	bool use_barrel_GEM = false;
+	bool use_DIRC = false;
 	// ======================================================================================================
 	// Make the Server
 	Fun4AllServer *se = Fun4AllServer::instance();
@@ -65,26 +64,28 @@ void Fun4All_G4_simplified_3vtx(
 	// ======================================================================================================
 	// Particle Generator Setup
 	PHG4ParticleGenerator *gen = new PHG4ParticleGenerator();
-	gen->set_name(part);	// geantino, pi-, pi+, mu-, mu+, e-., e+, proton, ... (currently passed as an input)
+	gen->set_name(std::string("pi-"));	// geantino, pi-, pi+, mu-, mu+, e-., e+, proton, ... (currently passed as an input)
 	gen->set_vtx(0,0,0);			// Vertex generation range
 	gen->set_mom_range(pmin,pmax);		// Momentum generation range in GeV/c
 	gen->set_z_range(0.,0.);
-	gen->set_eta_range(0.,4.);
+	gen->set_eta_range(-1.2,1.2);
 	gen->set_phi_range(0,2.*TMath::Pi());
 	// --------------------------------------------------------------------------------------
 	// Particle generator flat in pT
 	PHG4ParticleGenerator_flat_pT *gen_pT = new PHG4ParticleGenerator_flat_pT();
-	gen_pT->set_name(part);     // geantino, pi-, pi+, mu-, mu+, e-., e+, proton, ... (currently passed as an input)
+	gen_pT->set_name(std::string("pi-"));     // geantino, pi-, pi+, mu-, mu+, e-., e+, proton, ... (currently passed as an input)
 	gen_pT->set_vtx(0,0,0);                    // Vertex generation range
-	gen_pT->set_pT_range(0,2.);         // Momentum generation range in GeV/c
+	gen_pT->set_pT_range(.00001,5.);         // Momentum generation range in GeV/c
 	gen_pT->set_z_range(0.,0.);
-	//gen_pT->set_eta_range(-4,4);               // Detector coverage corresponds to |η|< 4
-	gen_pT->set_eta_range(0,0);
+	gen_pT->set_eta_range(-4,4);               // Detector coverage corresponds to |η|< 4
 	gen_pT->set_phi_range(0.,2.*TMath::Pi());
 	// ======================================================================================================
 	if     (particle_gen==1){se->registerSubsystem(  gen); cout << "Using particle generator"     << endl;}
 	else if(particle_gen==5){se->registerSubsystem(gen_pT); cout << "Using particle generator flat in pT"  << endl;}
 	else{ cout << "Particle generator option requested has not been implemented. Bailing out!" << endl; exit(0); }
+	// ======================================================================================================
+	if(use_DIRC)
+		DIRCInit();
 	// ======================================================================================================
 	PHG4Reco *g4Reco = new PHG4Reco();
 	//g4Reco->SetWorldMaterial("G4_Galactic");	
@@ -116,9 +117,9 @@ void Fun4All_G4_simplified_3vtx(
 	PHG4CylinderSubsystem *cyl;
 	//---------------------------
 	// Vertexing
-	double si_vtx_r_pos[] = {3.64,4.45,5.26};
+	double si_vtx_r_pos[] = {3.30,5.70};
 	const int nVtxLayers = sizeof(si_vtx_r_pos)/sizeof(*si_vtx_r_pos);
-	double si_z_vtxlength[] = {30.,30.,30.};
+	double si_z_vtxlength[] = {30.,30.};
 	double si_thick_vtx = vtx_matBud/100.*9.37;
 
 	for (int ilayer = 0; ilayer < nVtxLayers ; ilayer++){
@@ -168,7 +169,6 @@ void Fun4All_G4_simplified_3vtx(
 
 		si_r_max[i] -= si_r_min[i];
 	}
-
 	for (int ilayer = 0; ilayer < 10; ilayer++){
 		cyl = new PHG4CylinderSubsystem("FBVS", ilayer);
 		cyl->set_string_param("material" , "G4_Si"         );
@@ -181,7 +181,21 @@ void Fun4All_G4_simplified_3vtx(
 		cyl->set_color(1,0,0);
 		g4Reco->registerSubsystem(cyl);
 	}
-
+	//---------------------------
+	// Cylindrical GEM outside DIRC
+	double barrel_GEM_inner_radius = 60.; // GEM radius
+	double barrel_GEM_radial_thick = si_thick_bar*3.;
+	double barrel_GEM_z_length     = 121.;
+	cyl = new PHG4CylinderSubsystem("BARR_GEM",1);
+        cyl->set_string_param("material" , "G4_Si"                );
+        cyl->set_double_param("radius"   , barrel_GEM_inner_radius);
+        cyl->set_double_param("thickness", barrel_GEM_radial_thick);
+        cyl->set_double_param("place_z"  , 0                      );
+        cyl->set_double_param("length"   , 2.*barrel_GEM_z_length );
+        cyl->SetActive();
+        cyl->SuperDetector("BARR_GEM");
+        cyl->set_color(0,0.5,1);
+        g4Reco->registerSubsystem(cyl);
 	//---------------------------
 	// Black hole to suck loopers out of their misery
 	double BH_r = si_r_pos[nTrckLayers-1]+2;
@@ -215,6 +229,9 @@ void Fun4All_G4_simplified_3vtx(
 	AllSi_Al_support_Subsystem *Al_supp = new AllSi_Al_support_Subsystem("Al_supp");
 	g4Reco->registerSubsystem(Al_supp);	
 	// ------------	
+	if(use_DIRC)
+		double dirc_out_skin = DIRCSetup(g4Reco);
+	// ------------
 
 	PHG4TruthSubsystem *truth = new PHG4TruthSubsystem();
 	g4Reco->registerSubsystem(truth);
@@ -252,7 +269,7 @@ void Fun4All_G4_simplified_3vtx(
 			0                               	// noise hits
 			);
 
-	//  add Disk Layers
+	// add Disk Layers
 	kalman->add_phg4hits(
 			"G4HIT_FBST",				// const std::string& phg4hitsNames,
 			PHG4TrackFastSim::Vertical_Plane,
@@ -263,13 +280,31 @@ void Fun4All_G4_simplified_3vtx(
 			0                           		// noise hits
 			);	
 
+	// add barrel GEM layer
+	if(use_barrel_GEM){
+	kalman->add_phg4hits(
+			"G4HIT_BARR_GEM",                       // const std::string& phg4hitsNames,
+                        PHG4TrackFastSim::Cylinder,
+                        999.,                                   // radial-resolution [cm]
+                        50e-4,          			// azimuthal-resolution [cm]
+                        50e-4,          			// z-resolution [cm]
+                        1,                                      // efficiency,
+                        0
+			);
+	}
+	// Mom. res.
+	//kalman->set_use_vertex_in_fitting(true);
+       	//kalman->set_vertex_xy_resolution(50e-4);
+        //kalman->set_vertex_z_resolution(50e-4);
+        //kalman->enable_vertexing(false); // this is false by default
+       	//kalman->set_vertex_min_ndf(10);
+       
 	//kalman->Verbosity(10);
 	kalman->set_use_vertex_in_fitting(false);
 	kalman->set_vertex_xy_resolution(0);
 	kalman->set_vertex_z_resolution(0);
 	kalman->enable_vertexing(false); // this is false by default
 	kalman->set_vertex_min_ndf(2);
-	kalman->set_primary_assumption_pid(pid_code( part ));
 
 	se->registerSubsystem(kalman);
 
@@ -296,10 +331,4 @@ void Fun4All_G4_simplified_3vtx(
 	delete se;
 
 	gSystem->Exit(0);
-}
-// ======================================================================================================
-int pid_code( std::string part_name ){
-	if(part_name=="pi-"||part_name=="PI-"||part_name=="Pi-"||part_name=="pi+"||part_name=="PI+"||part_name=="Pi+") return 211;
-	else if(part_name=="k-"||part_name=="K-"||part_name=="k+"||part_name=="K+"||part_name=="kaon+"||part_name=="Kaon+"||part_name=="KAON+"||part_name=="kaon-"||part_name=="Kaon-"||part_name=="KAON-") return 321;
-	else return -999;
 }
